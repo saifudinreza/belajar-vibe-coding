@@ -15,6 +15,13 @@
       "when": 1790256908737,
       "tag": "0001_loud_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1790601088338,
+      "tag": "0002_ambiguous_nebula",
+      "breakpoints": true
     }
   ]
 }
