@@ -48,14 +48,14 @@ export const usersRoute = new Elysia({ prefix: "/users" })
     const authorization = headers.authorization;
 
     if (!authorization || !authorization.startsWith("Bearer ")) {
-      return status(401, { data: "Unauthorized" });
+      return status(401, { Error: "Unauthorized" });
     }
 
     const token = authorization.slice("Bearer ".length);
     const user = await getCurrentUser(token);
 
     if (!user) {
-      return status(401, { data: "Unauthorized" });
+      return status(401, { Error: "Unauthorized" });
     }
 
     return {
