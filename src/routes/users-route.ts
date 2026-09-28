@@ -3,6 +3,7 @@ import {
   registerUser,
   loginUser,
   getCurrentUser,
+  logoutUser,
 } from "../services/users-service";
 
 export const usersRoute = new Elysia({ prefix: "/users" })
@@ -47,14 +48,14 @@ export const usersRoute = new Elysia({ prefix: "/users" })
     const authorization = headers.authorization;
 
     if (!authorization || !authorization.startsWith("Bearer ")) {
-      return status(401, { data: "Unauthorized" });
+      return status(401, { Error: "Unauthorized" });
     }
 
     const token = authorization.slice("Bearer ".length);
     const user = await getCurrentUser(token);
 
     if (!user) {
-      return status(401, { data: "Unauthorized" });
+      return status(401, { Error: "Unauthorized" });
     }
 
     return {
@@ -65,4 +66,20 @@ export const usersRoute = new Elysia({ prefix: "/users" })
         created_at: user.createdAt,
       },
     };
+  })
+  .post("/logout", async ({ headers, status }) => {
+    const authorization = headers.authorization;
+
+    if (!authorization || !authorization.startsWith("Bearer ")) {
+      return status(401, { Error: "Unauthorized" });
+    }
+
+    const token = authorization.slice("Bearer ".length);
+    const loggedOut = await logoutUser(token);
+
+    if (!loggedOut) {
+      return status(401, { Error: "Unauthorized" });
+    }
+
+    return { data: "OK" };
   });

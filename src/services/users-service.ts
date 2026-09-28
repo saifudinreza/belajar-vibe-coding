@@ -62,3 +62,9 @@ export async function getCurrentUser(token: string) {
 
   return user ?? null;
 }
+
+export async function logoutUser(token: string): Promise<boolean> {
+  const [result] = await db.delete(sessions).where(eq(sessions.token, token));
+
+  return result.affectedRows > 0;
+}
