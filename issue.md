@@ -1,132 +1,155 @@
-# Fitur: Registrasi User Baru
+# Fitur: Login User
 
 ## Konteks
 
-Project ini pakai **Bun + ElysiaJS + Drizzle ORM + MySQL**. Struktur folder di dalam `src/` sudah ada:
+Project ini pakai **Bun + ElysiaJS + Drizzle ORM + MySQL**. Fitur registrasi user (`POST /api/users`) sudah ada. Issue ini menambahkan fitur **login**: user mengirim email + password. Kalau cocok, server membuat token (UUID), menyimpannya di tabel `sessions`, lalu mengembalikan token tersebut.
 
-- `src/routes/` — berisi routing ElysiaJS. Format nama file: `nama-route.ts` (contoh: `users-route.ts`).
-- `src/services/` — berisi logic bisnis aplikasi. Format nama file: `nama-service.ts` (contoh: `users-service.ts`). **Folder ini belum ada, harus dibuat.**
-- `src/db/schema.ts` — berisi definisi tabel Drizzle. Sudah ada tabel `users`, tapi perlu ditambah kolom `password`.
-- `src/db/index.ts` — koneksi database Drizzle, sudah ada, tidak perlu diubah.
+Struktur yang sudah ada:
 
-Tabel `users` yang **sudah ada sekarang** di `src/db/schema.ts`:
+- `src/db/schema.ts` — definisi tabel Drizzle. Sudah ada tabel `users` (`id`, `name`, `email`, `password` hash bcrypt, `created_at`).
+- `src/services/users-service.ts` — sudah ada fungsi `registerUser`. Fungsi login ditambahkan di file ini juga.
+- `src/routes/users-route.ts` — sudah ada route `POST /users` (registrasi). Route login ditambahkan di file ini juga.
+- `src/index.ts` — route di `users-route.ts` sudah di-mount dengan prefix `/api`. **Tidak perlu diubah.**
 
-```ts
-export const users = mysqlTable("users", {
-  id: int("id").primaryKey().autoincrement(),
-  name: varchar("name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-```
+Aturan folder:
 
-Sudah ada juga route CRUD user di `src/routes/users.ts` (belum mengikuti konvensi nama `users-route.ts`, biarkan saja file itu, jangan dihapus/diubah kecuali diminta di step lain).
+- `src/routes/` — hanya urusan HTTP: validasi body, panggil service, bentuk response.
+- `src/services/` — logic bisnis: query database, cek password, buat token.
+
+---
+
+## Keputusan desain (sudah final, ikuti saja)
+
+1. **Endpoint: `POST /api/users/login`.**
+2. **Token dibuat pakai `crypto.randomUUID()`.** Fungsi ini bawaan Bun, jadi tidak perlu install package `uuid`.
+3. **Cek password pakai `Bun.password.verify(password, hash)`.** Ini pasangan dari `Bun.password.hash` yang dipakai waktu registrasi. Jangan bandingkan string password secara langsung, karena yang tersimpan di database adalah hash.
+4. **Pesan error selalu sama** (`"Email atau password salah"`), baik email tidak ditemukan maupun password salah. Ini disengaja supaya orang tidak bisa menebak email mana yang terdaftar.
 
 ---
 
 ## Yang harus dikerjakan
 
-### 1. Tambah kolom `password` di tabel `users`
+### 0. Persiapan: pastikan tabel `sessions` belum ada di database
 
-Di `src/db/schema.ts`, tambahkan kolom `password` bertipe `varchar(255)`, `not null`, diletakkan setelah `email`:
+Buka database `belajar_vibe_coding` (MySQL Workbench, phpMyAdmin, atau `mysql` CLI), lalu jalankan:
 
-```ts
-password: varchar("password", { length: 255 }).notNull(),
+```sql
+SHOW TABLES LIKE 'sessions';
 ```
 
-Hasil akhir tabel harus persis seperti ini:
+- Kalau hasilnya kosong → lanjut ke langkah 1.
+- Kalau tabel `sessions` sudah ada (sisa percobaan sebelumnya), **tanyakan dulu ke pemilik project** sebelum menghapus apa pun. Jangan drop tabel sendiri.
+
+### 1. Tambah tabel `sessions` di schema
+
+Di `src/db/schema.ts`, tambahkan tabel `sessions` **di bawah** tabel `users`. Posisinya harus di bawah karena tabel ini mereferensikan `users`.
+
+Spesifikasi kolom:
+
+| Kolom        | Tipe         | Aturan                              |
+| ------------ | ------------ | ----------------------------------- |
+| `id`         | int          | primary key, auto increment         |
+| `token`      | varchar(255) | not null, isinya UUID               |
+| `user_id`    | int          | not null, foreign key ke `users.id` |
+| `created_at` | timestamp    | default current timestamp, not null |
+
+Kode yang ditambahkan:
 
 ```ts
-export const users = mysqlTable("users", {
+export const sessions = mysqlTable("sessions", {
   id: int("id").primaryKey().autoincrement(),
-  name: varchar("name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
-  password: varchar("password", { length: 255 }).notNull(),
+  token: varchar("token", { length: 255 }).notNull(),
+  userId: int("user_id")
+    .notNull()
+    .references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 ```
 
-Setelah edit schema, generate dan jalankan migration:
+Import di baris paling atas file **tidak perlu diubah**. `mysqlTable`, `int`, `varchar`, dan `timestamp` sudah di-import.
+
+Lalu generate dan jalankan migration:
 
 ```bash
 bun run db:generate
 bun run db:migrate
 ```
 
-Pastikan file migration baru muncul di folder `drizzle/` dan berhasil dijalankan ke database tanpa error.
+Cek hasilnya: harus muncul file SQL baru di folder `drizzle/` yang berisi `CREATE TABLE sessions` dan `FOREIGN KEY`, dan `db:migrate` harus selesai tanpa error.
 
-### 2. Buat folder `src/services/`
+### 2. Tambah fungsi `loginUser` di service
 
-Buat file baru: `src/services/users-service.ts`.
+Di `src/services/users-service.ts`:
 
-File ini berisi **logic bisnis**, bukan logic HTTP (jangan ada `Elysia`, `request`, `response` di sini). Isinya minimal 1 fungsi:
-
-```ts
-registerUser(name: string, email: string, password: string): Promise<{ success: boolean; error?: string }>
-```
-
-Alur di dalam fungsi `registerUser`:
-
-1. Cek apakah `email` sudah terdaftar di tabel `users` (pakai Drizzle `db.select().from(users).where(eq(users.email, email))`).
-2. Kalau sudah ada → return `{ success: false, error: "Email sudah terdaftar" }`.
-3. Kalau belum ada → hash `password` pakai **bcrypt**.
-   - Karena project ini pakai Bun, gunakan built-in `Bun.password.hash(password, { algorithm: "bcrypt" })` — **tidak perlu install package `bcrypt` tambahan**.
-4. Insert user baru ke tabel `users` dengan `password` yang sudah di-hash (bukan plain text).
-5. Kalau insert berhasil → return `{ success: true }`.
-
-Referensi import yang dipakai di file lain untuk konsistensi:
+1. Ubah import schema dari `import { users } from "../db/schema";` menjadi:
+   ```ts
+   import { users, sessions } from "../db/schema";
+   ```
+2. Tambahkan fungsi baru **di bawah** `registerUser`. Jangan ubah `registerUser`.
 
 ```ts
-import { eq } from "drizzle-orm";
-import { db } from "../db";
-import { users } from "../db/schema";
+export async function loginUser(
+  email: string,
+  password: string,
+): Promise<{ success: boolean; token?: string; error?: string }> {
+  // isi sesuai alur di bawah
+}
 ```
 
-### 3. Buat route `POST /api/users`
+Alur di dalam `loginUser`:
 
-Buat file baru: `src/routes/users-route.ts`.
+1. Cari user berdasarkan email:
+   `const [user] = await db.select().from(users).where(eq(users.email, email));`
+2. Kalau `user` tidak ada → `return { success: false, error: "Email atau password salah" };`
+3. Cek password: `const valid = await Bun.password.verify(password, user.password);`
+4. Kalau `valid` false → `return { success: false, error: "Email atau password salah" };`
+5. Buat token: `const token = crypto.randomUUID();`
+6. Simpan ke tabel sessions: `await db.insert(sessions).values({ token, userId: user.id });`
+7. `return { success: true, token };`
 
-File ini **hanya** menangani HTTP (terima request, validasi bentuk body, panggil service, kirim response). Jangan taruh logic bisnis (hash password, cek email duplikat, dll) di sini — itu semua sudah ada di `users-service.ts` pada step 2.
+### 3. Tambah route `POST /login` di route users
+
+Di `src/routes/users-route.ts`:
+
+1. Ubah import service menjadi:
+   ```ts
+   import { registerUser, loginUser } from "../services/users-service";
+   ```
+2. Sambungkan `.post("/login", ...)` setelah `.post("/", ...)` yang sudah ada (method chaining Elysia). Route ini punya prefix `/users` dan di-mount di bawah `/api`, jadi path akhirnya `POST /api/users/login`.
 
 Spesifikasi endpoint:
 
-- **Method & path:** `POST /api/users`
 - **Request body:**
   ```json
   {
-    "name": "reza",
     "email": "donojomi@gmail.com",
     "password": "rahasia"
   }
   ```
 - **Response sukses (HTTP 200):**
   ```json
-  { "data": "OK" }
+  { "data": "<token UUID>" }
   ```
-- **Response gagal, misal email sudah terdaftar (HTTP 400):**
+  Contoh: `{ "data": "3f2b8c1e-9a7d-4e21-b6f0-5c8d2a1e7f43" }`
+- **Response gagal (HTTP 401):**
   ```json
-  { "Error": "Email sudah terdaftar" }
+  { "Error": "Email atau password salah" }
   ```
 
-Validasi body pakai Elysia `t.Object` (contoh polanya bisa dilihat di `src/routes/users.ts` yang sudah ada), minimal:
+Validasi body:
 
 ```ts
 body: t.Object({
-  name: t.String(),
   email: t.String({ format: "email" }),
-  password: t.String({ minLength: 6 }),
-})
+  password: t.String(),
+}),
 ```
 
-Struktur route mengikuti pola project (pakai `new Elysia({ prefix: "/users" })`), lalu panggil `registerUser` dari service, dan mapping hasilnya ke response body sesuai spesifikasi di atas.
+**Jangan** pakai `minLength` untuk password di login. Validasi panjang password cukup di registrasi.
 
-### 4. Daftarkan route baru ke aplikasi utama
+Isi handler: panggil `loginUser(body.email, body.password)`. Kalau `result.success` false → `return status(401, { Error: result.error });`. Kalau sukses → `return { data: result.token };`. Strukturnya sama dengan handler registrasi di file yang sama, jadi contek pola itu.
 
-Buka `src/index.ts`, cek bagaimana route lain (misalnya `usersRoute` dari `src/routes/users.ts`) didaftarkan ke instance `Elysia` utama. Daftarkan juga route baru dari `src/routes/users-route.ts` dengan prefix `/api` (karena endpoint final harus `/api/users`, sedangkan route sudah punya prefix `/users`, jadi prefix `/api` ditambahkan di level app, bukan di level route).
-
-Kalau route lama (`users.ts`) juga di-mount tanpa prefix `/api`, biarkan seperti itu, jangan diubah — cukup tambahkan route baru dengan prefix yang benar.
-
-### 5. Testing manual
+### 4. Testing manual
 
 Jalankan server:
 
@@ -134,7 +157,7 @@ Jalankan server:
 bun run dev
 ```
 
-Test dengan curl atau tool sejenis (Postman/Insomnia):
+Pastikan sudah ada user terdaftar. Kalau belum, daftar dulu:
 
 ```bash
 curl -X POST http://localhost:3000/api/users \
@@ -142,18 +165,29 @@ curl -X POST http://localhost:3000/api/users \
   -d '{"name":"reza","email":"donojomi@gmail.com","password":"rahasia"}'
 ```
 
+Lalu test login:
+
+```bash
+curl -X POST http://localhost:3000/api/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"donojomi@gmail.com","password":"rahasia"}'
+```
+
 Checklist yang harus lolos:
 
-- [ ] Request pertama dengan email baru → response `{ "data": "OK" }`, dan ada row baru di tabel `users` dengan `password` ter-hash (bukan plain text `rahasia`).
-- [ ] Request kedua dengan email yang **sama** → response `{ "Error": "Email sudah terdaftar" }`, dan **tidak ada** row baru ditambahkan ke database.
-- [ ] Request dengan `email` format tidak valid (misal `"bukan-email"`) → Elysia otomatis reject karena validasi `t.String({ format: "email" })`.
-- [ ] Request dengan `password` kurang dari 6 karakter → Elysia otomatis reject karena validasi `minLength: 6`.
+- [ ] Email + password benar → HTTP 200, `{ "data": "<uuid>" }`, dan ada row baru di tabel `sessions` dengan `token` yang sama dan `user_id` milik user tersebut.
+- [ ] Login dua kali berturut-turut → dapat 2 token **berbeda**, dan ada 2 row di `sessions`.
+- [ ] Password salah → HTTP 401, `{ "Error": "Email atau password salah" }`, dan tidak ada row baru di `sessions`.
+- [ ] Email tidak terdaftar → HTTP 401 dengan pesan error **sama persis** seperti password salah.
+- [ ] Email format tidak valid (misal `"bukan-email"`) → ditolak otomatis oleh validasi Elysia.
+- [ ] Registrasi `POST /api/users` masih berjalan normal.
 
 ---
 
-## Batasan / hal yang TIDAK perlu dikerjakan di issue ini
+## Di luar scope
 
-- Tidak perlu bikin fitur login/JWT/session — itu di luar scope issue ini.
-- Tidak perlu ubah/hapus route CRUD lama di `src/routes/users.ts`.
-- Tidak perlu install package bcrypt eksternal — pakai `Bun.password` bawaan Bun.
-- Jangan hardcode credential database atau secret apapun langsung di kode — semua lewat `process.env` (lihat `src/db/index.ts` dan `drizzle.config.ts` sebagai contoh).
+- Tidak perlu membuat middleware auth, endpoint logout, atau endpoint "get current user". Itu issue terpisah.
+- Tidak perlu masa kedaluwarsa (expiry) token.
+- Tidak perlu install package tambahan (`uuid`, `bcrypt`, `jsonwebtoken`, dll). Semua sudah tersedia di Bun.
+- Jangan ubah `src/index.ts`, `src/routes/users.ts`, atau fungsi `registerUser`.
+- Jangan hardcode credential apa pun. Koneksi database tetap lewat `DATABASE_URL` di `.env`.
