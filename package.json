@@ -7,7 +7,9 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:migrate:test": "bun --env-file=.env.test run db:migrate",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",
