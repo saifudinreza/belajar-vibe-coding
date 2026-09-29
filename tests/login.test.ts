@@ -4,6 +4,7 @@ import { db } from "../src/db";
 import { sessions, users } from "../src/db/schema";
 import { jsonRequest, resetDatabase } from "./helpers";
 
+// Token login dibuat dengan crypto.randomUUID(), jadi bentuknya harus UUID
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 describe("POST /api/users/login", () => {
@@ -88,6 +89,8 @@ describe("POST /api/users/login", () => {
     expect(userSessions.length).toBe(0);
   });
 
+  // Disengaja: pesan error harus identik supaya orang tidak bisa menebak
+  // email mana yang terdaftar hanya dari perbedaan pesan error
   test("unregistered email returns the exact same error as wrong password", async () => {
     const res = await jsonRequest("/api/users/login", "POST", {
       email: "not-registered@example.com",

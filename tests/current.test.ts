@@ -19,6 +19,8 @@ describe("GET /api/users/current", () => {
     expect(body.data.created_at).toBeDefined();
   });
 
+  // Service-nya select kolom manual (bukan select *), test ini memastikan
+  // itu tidak diam-diam berubah dan mulai ikut mengembalikan hash password
   test("successful response does not include the password field", async () => {
     const { token } = await registerAndLogin();
 

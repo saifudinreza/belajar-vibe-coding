@@ -117,6 +117,9 @@ describe("POST /api/users", () => {
     expect(res.status).toBe(200);
   });
 
+  // Regresi bug #17: sebelum ada validasi maxLength, name yang kepanjangan
+  // membuat insert ke MySQL gagal dan error mentahnya (query SQL + hash
+  // password) ikut terkirim ke client lewat response 500.
   test("name of 256 characters returns 422 without leaking internals", async () => {
     const res = await jsonRequest("/api/users", "POST", {
       name: "a".repeat(256),
