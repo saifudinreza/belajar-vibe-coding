@@ -32,6 +32,7 @@ Backend REST API sederhana untuk manajemen user: registrasi, login berbasis toke
 | Package       | Versi    | Kegunaan                                                      |
 | ------------- | -------- | ------------------------------------------------------------- |
 | `elysia`      | ^1.4.30  | Routing HTTP, validasi request body (`t.Object`), error hook  |
+| `@elysiajs/openapi` | ^1.4.16 | Dokumentasi API otomatis (Swagger UI) di `/swagger`     |
 | `drizzle-orm` | ^0.45.3  | Query builder dan definisi schema tabel                        |
 | `mysql2`      | ^3.24.4  | Driver koneksi MySQL yang dipakai Drizzle                     |
 | `drizzle-kit` | ^0.31.11 | (dev) Generate dan menjalankan migration                      |
@@ -146,6 +147,14 @@ Definisi di kode ada di `src/db/schema.ts`. Riwayat perubahannya ada di folder `
 
 Base URL: `http://localhost:3000`
 
+### Dokumentasi interaktif (Swagger)
+
+Setelah server jalan, buka `http://localhost:3000/swagger` untuk melihat dan mencoba semua endpoint lewat Swagger UI.
+
+Spesifikasi OpenAPI (JSON) tersedia di `http://localhost:3000/swagger/json`, bisa di-import ke Postman atau Insomnia.
+
+Untuk mencoba endpoint yang butuh login: jalankan `POST /api/users/login` dari Swagger, salin token dari response, klik tombol **Authorize**, tempel token (**tanpa** kata `Bearer`, karena Swagger menambahkannya sendiri), lalu coba endpoint seperti `GET /api/users/current`.
+
 | Method | Path                  | Auth     | Keterangan                       |
 | ------ | --------------------- | -------- | -------------------------------- |
 | GET    | `/health`             | -        | Cek server hidup                 |
@@ -252,7 +261,7 @@ Logout hanya menghapus session dari token yang dikirim. Token lain milik user ya
 
 Masih ada route CRUD lama di `src/routes/users.ts` yang di-mount **tanpa** prefix `/api` dan **tanpa autentikasi**: `GET /users`, `GET /users/:id`, `POST /users`, `PUT /users/:id`, `DELETE /users/:id`.
 
-> **Peringatan:** jangan gunakan route ini. `GET /users` dan `GET /users/:id` ikut mengembalikan hash password semua user. `PUT` dan `DELETE` bisa dipanggil siapa saja tanpa login. `POST /users` selalu gagal (500) karena tidak menerima `password`, padahal kolom itu wajib. Route ini tidak tercakup test dan sebaiknya dihapus.
+> **Peringatan:** jangan gunakan route ini. `GET /users` dan `GET /users/:id` ikut mengembalikan hash password semua user. `PUT` dan `DELETE` bisa dipanggil siapa saja tanpa login. `POST /users` selalu gagal (500) karena tidak menerima `password`, padahal kolom itu wajib. Route ini tidak tercakup test dan sebaiknya dihapus. Route ini juga sengaja disembunyikan dari Swagger.
 
 ---
 
