@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { users, sessions } from "../db/schema";
 
+// Mendaftarkan user baru. Menolak kalau email sudah dipakai, dan
+// menyimpan password dalam bentuk hash bcrypt, bukan teks asli.
 export async function registerUser(
   name: string,
   email: string,
@@ -25,6 +27,8 @@ export async function registerUser(
   return { success: true };
 }
 
+// Memverifikasi email dan password. Kalau cocok, membuat token session baru
+// (UUID) dan menyimpannya di tabel sessions untuk dipakai request berikutnya.
 export async function loginUser(
   email: string,
   password: string,
@@ -48,6 +52,8 @@ export async function loginUser(
   return { success: true, token };
 }
 
+// Mencari user pemilik sebuah token session. Mengembalikan null kalau
+// tokennya tidak ada (termasuk token yang sudah expired/logout).
 export async function getCurrentUser(token: string) {
   const [user] = await db
     .select({
@@ -63,6 +69,8 @@ export async function getCurrentUser(token: string) {
   return user ?? null;
 }
 
+// Menghapus session dari sebuah token, sehingga token itu tidak berlaku
+// lagi. Mengembalikan false kalau tokennya memang tidak ditemukan.
 export async function logoutUser(token: string): Promise<boolean> {
   const [result] = await db.delete(sessions).where(eq(sessions.token, token));
 
